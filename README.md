@@ -25,7 +25,7 @@ tp.set_worker(worker_func)
 
 tp.start()
 tp.sync()
-print(tp.
+print(f"Return values are: {tp.get_ret_val()}")
 ```
 
 Output:
