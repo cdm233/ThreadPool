@@ -38,7 +38,6 @@ class ThreadPool:
 
         self.total_work = work
         self.__stop_event = threading.Event()
-        self.__thread_stop_event = [threading.Event() for _ in range(self.num_threads)]
 
         # printing
         self.verbose = verbose
@@ -110,12 +109,6 @@ class ThreadPool:
                 if self.verbose:
                     print()
                     print(f"\rStop event triggered, stopping thread {thread_id}...")
-                return False
-
-            if self.__thread_stop_event[thread_id].is_set():
-                if self.verbose:
-                    print()
-                    print(f"\rStopping thread {thread_id}...")
                 return False
 
             ite_start = time.time()
@@ -260,9 +253,6 @@ class ThreadPool:
         self.sync()
         self.__stop_event.clear()
 
-        for thread_event in self.__thread_stop_event:
-            thread_event.clear()
-
         self.__total_progress = 0
         self.total_work = []
         self.distributed_work = []
@@ -287,11 +277,3 @@ class ThreadPool:
         :return: None
         """
         self.__stop_event.set()
-
-    def stop_thread(self, thread_id):
-        """
-        Ask politely one particular thread with thread_id to stop executing.
-        :param thread_id:
-        :return:
-        """
-        self.__thread_stop_event[thread_id].set()
