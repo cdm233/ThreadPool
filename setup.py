@@ -12,7 +12,7 @@ DESCRIPTION = 'A simple threadpool library for python that does three things: di
 
 # Setting up
 setup(
-    name="threadpool",
+    name="ThreadPool",
     version=VERSION,
     author="Derek Chen",
     author_email="demeng.chen@mail.utoronto.ca",

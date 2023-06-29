@@ -47,7 +47,7 @@ class ThreadPool:
         self.__total_progress = len(work)
 
         self.distributed_work = self.distribute_work(work)
-        self.__return_val_cache = [[] for _ in range(self.num_threads)]
+        self.__return_val_cache = {}
 
         if self.verbose:
             print("Work distributed.")
@@ -103,8 +103,7 @@ class ThreadPool:
         """
 
         # List to store the return values of each work item processed by this thread
-        temp_ret_val_store = []
-        for w in work:
+        for idx, w in enumerate(work):
             if self.__stop_event.is_set():
                 if self.verbose:
                     print()
@@ -125,9 +124,17 @@ class ThreadPool:
 
             ite_end = time.time()
 
+            # create the array if it's the first iteration
+            if f"thread {thread_id}" not in self.__return_val_cache:
+                self.__return_val_cache[f"thread {thread_id}"] = []
+
             # Store the return value of the worker function, if it exists
             if (cur_ret_val is not None) and self.cache_return_val:
-                temp_ret_val_store.append(cur_ret_val)
+                self.__return_val_cache[f"thread {thread_id}"].append({
+                    "param": w,
+                    "iteration": idx,
+                    "return value": cur_ret_val
+                })
 
             # Print progress update, if verbose mode is enabled
             if self.verbose:
@@ -138,7 +145,6 @@ class ThreadPool:
                 self.__print_progress()
                 self.__print_lock.release()
 
-        self.__return_val_cache[thread_id] = temp_ret_val_store
         return True
 
     def create_thread_pool(self, worker=None, distributed_work=None):

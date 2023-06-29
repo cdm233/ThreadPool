@@ -1,6 +1,10 @@
 LICENSE
 README.md
 setup.py
+ThreadPool.egg-info/PKG-INFO
+ThreadPool.egg-info/SOURCES.txt
+ThreadPool.egg-info/dependency_links.txt
+ThreadPool.egg-info/top_level.txt
 threadpool/__init__.py
 threadpool/threadpool.py
 threadpool.egg-info/PKG-INFO

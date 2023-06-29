@@ -38,7 +38,6 @@ class ThreadPool:
 
         self.total_work = work
         self.__stop_event = threading.Event()
-        self.__thread_stop_event = [threading.Event() for _ in range(self.num_threads)]
 
         # printing
         self.verbose = verbose
@@ -48,7 +47,7 @@ class ThreadPool:
         self.__total_progress = len(work)
 
         self.distributed_work = self.distribute_work(work)
-        self.__return_val_cache = [[] for _ in range(self.num_threads)]
+        self.__return_val_cache = {}
 
         if self.verbose:
             print("Work distributed.")
@@ -104,18 +103,11 @@ class ThreadPool:
         """
 
         # List to store the return values of each work item processed by this thread
-        temp_ret_val_store = []
-        for w in work:
+        for idx, w in enumerate(work):
             if self.__stop_event.is_set():
                 if self.verbose:
                     print()
                     print(f"\rStop event triggered, stopping thread {thread_id}...")
-                return False
-
-            if self.__thread_stop_event[thread_id].is_set():
-                if self.verbose:
-                    print()
-                    print(f"\rStopping thread {thread_id}...")
                 return False
 
             ite_start = time.time()
@@ -132,9 +124,17 @@ class ThreadPool:
 
             ite_end = time.time()
 
+            # create the array if it's the first iteration
+            if f"thread {thread_id}" not in self.__return_val_cache:
+                self.__return_val_cache[f"thread {thread_id}"] = []
+
             # Store the return value of the worker function, if it exists
             if (cur_ret_val is not None) and self.cache_return_val:
-                temp_ret_val_store.append(cur_ret_val)
+                self.__return_val_cache[f"thread {thread_id}"].append({
+                    "param": w,
+                    "iteration": idx,
+                    "return value": cur_ret_val
+                })
 
             # Print progress update, if verbose mode is enabled
             if self.verbose:
@@ -145,7 +145,6 @@ class ThreadPool:
                 self.__print_progress()
                 self.__print_lock.release()
 
-        self.__return_val_cache[thread_id] = temp_ret_val_store
         return True
 
     def create_thread_pool(self, worker=None, distributed_work=None):
@@ -249,7 +248,11 @@ class ThreadPool:
         :return: A list of lists, where each inner list contains the return values of a single thread
         """
         assert self.cache_return_val, "cache_return_val is not set to True!"
-        return self.__return_val_cache
+
+        # sort by thread id
+        return {k: v for k, v in sorted(self.__return_val_cache.items(), key=lambda item: int(item[0].split(" ")[1]))}
+
+        # return self.__return_val_cache
 
     def clear_thread_pool(self):
         """
@@ -259,9 +262,6 @@ class ThreadPool:
         self.__stop_event.set()
         self.sync()
         self.__stop_event.clear()
-
-        for thread_event in self.__thread_stop_event:
-            thread_event.clear()
 
         self.__total_progress = 0
         self.total_work = []
@@ -287,11 +287,3 @@ class ThreadPool:
         :return: None
         """
         self.__stop_event.set()
-
-    def stop_thread(self, thread_id):
-        """
-        Ask politely one particular thread with thread_id to stop executing.
-        :param thread_id:
-        :return:
-        """
-        self.__thread_stop_event[thread_id].set()
