@@ -1,5 +1,6 @@
 # ThreadPool
 A simple thread pool library for me, maybe you'd find it helpful too. Use this if you don't want to write the same 10-20 lines every single time. Or if you wish to keep a reminder of how a thread pool works on your side. 
+Note: Still in the planning phase.
 
 ## Quick Example1
 The standard way of using it.
