@@ -21,7 +21,7 @@ setup(
     url="https://github.com/cdm233/ThreadPool",
     long_description=long_description,
     packages=find_packages(),
-    install_requires=["threading", "time"],
+    install_requires=[],
     keywords=['python', 'multithreading', 'IO Blocking', "threadpool"],
     license="MIT",
     classifiers=[
