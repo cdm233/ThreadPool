@@ -77,6 +77,22 @@ class ThreadPool:
 
         return temp_split
 
+    def add_thread(self, worker, *args):
+        if callable(worker):
+            cur_thread = threading.Thread(
+                target=worker, args=args
+            )
+        else:
+            if isinstance(worker, ClockThread):
+                cur_thread = worker
+            else:
+                return None, None
+
+        cur_thread_id = self.__thread_pool
+        self.__thread_pool.append(cur_thread)
+
+        return cur_thread_id, cur_thread
+
     @staticmethod
     def __worker():
         """
@@ -119,8 +135,8 @@ class ThreadPool:
                 else:
                     # if the arg type is list or anything else, just pass it in
                     cur_ret_val = self.__worker(w)
-            except:
-                print(f"A fatal error occurred at thread {thread_id}.")
+            except Exception as e:
+                print(f"A fatal error({e}) occurred at thread {thread_id}.")
                 return False
 
             ite_end = time.time()
@@ -141,45 +157,32 @@ class ThreadPool:
             if self.verbose:
                 # Lock the print statement to prevent other threads from interrupting it
                 self.__print_lock.acquire()
+
                 self.__progress += 1
                 self.__total_time_elapsed += ite_end - ite_start
                 self.__print_progress()
+
                 self.__print_lock.release()
 
         return True
 
-    def create_thread_pool(self, worker=None, distributed_work=None):
+    def create_thread_pool(self):
         """
-        Creates threadpool. Optionally pass in a callable function here to craete a manually managed threadpool.
-        Use this if you don't trust the wrapper created for you and want to manage the working threads yourself.
-        Note, if you pass in a function here, then you need to pass this thread_pool to start(thread_pool) and sync(thread_pool).
+        Creates threadpool with the default worker.
         :return: thread_pool if worker is set, otherwise none
         """
 
-        if worker is not None:
-            assert distributed_work is not None, "External distributed_work is not given!"
-            # here we set the worker but don't set the flag, because this threadpool is meant to be external
-            temp_thread_pool = []
-            for thread_id in range(self.num_threads):
-                cur_thread = threading.Thread(
-                    target=worker, args=(distributed_work[thread_id],)
-                )
-                temp_thread_pool.append(cur_thread)
+        for thread_id in range(self.num_threads):
+            cur_thread = threading.Thread(
+                target=self.__worker_wrapper, args=(thread_id, self.distributed_work[thread_id],)
+            )
+            self.__thread_pool.append(cur_thread)
 
-            return temp_thread_pool
+        return None
 
-        else:
-            for thread_id in range(self.num_threads):
-                cur_thread = threading.Thread(
-                    target=self.__worker_wrapper, args=(thread_id, self.distributed_work[thread_id],)
-                )
-                self.__thread_pool.append(cur_thread)
-
-            return None
-
-    def set_worker(self, func):
+    def set_default_worker(self, func):
         """
-        Sets the worker, the worker should work on one item from the distributed work.
+        Sets the default worker, the worker should work on one item from the distributed work.
         Please make sure the worker is thread-safe.
         :param func: Function handle to the worker.
         :return: True/False, indicating if the worker is set correctly
@@ -192,36 +195,27 @@ class ThreadPool:
 
         self.__worker_set = True
 
-    def start(self, external_thread_pool=None):
+    def start(self):
         """
-        Starts all threads in the thread pool. Optionally pass in an external thread_pool created from create_thread_pool here.
+        Starts all threads in the thread pool.
 
         :return: True if the worker function is set and threads are started, False otherwise
         """
-        if external_thread_pool is None:
-            assert self.__worker_set, "Worker function is not set!"
 
-            for t in self.__thread_pool:
-                t.start()
-        else:
-            for t in external_thread_pool:
-                t.start()
+        for t in self.__thread_pool:
+            t.start()
 
         return True
 
-    def sync(self, external_thread_pool=None):
+    def sync(self):
         """
         Waits for all threads in the thread pool to finish execution.
-        Optionally pass in an external thread_pool created from create_thread_pool here.
 
         :return: True when all threads have finished execution
         """
-        if external_thread_pool is None:
-            for t in self.__thread_pool:
-                t.join()
-        else:
-            for t in external_thread_pool:
-                t.join()
+
+        for t in self.__thread_pool:
+            t.join()
 
         if self.verbose:
             print("\nAll threads synchronized.")
@@ -453,3 +447,82 @@ class DynamicThreadPool:
         """
         assert self.cache_return_val, "cache_return_val is not set to True!"
         return self.__return_val_cache
+
+
+class ClockThread:
+    def __init__(self, worker, mode="n", interval=-1, block_on_first_call=True):
+        """
+        Creates a new background thread that calls the given worker function by mode or interval.
+        If block_on_first_call is True then the main thread is block until the worker function is executed once.
+        :param worker: The worker function to be called.
+        :param mode: Calls the worker function h(hourly) or d(daily). n means do not use mode.
+        :param interval: Calls the worker function every 'interval' minutes. Float or integer.
+        """
+        assert not (mode == "n" and interval == -1), "Please only use interval or mode, not both"
+        assert mode in ["h", "d", "n"], "Mode can only be h or d!"
+        assert callable(worker), "Worker is not a callable function!"
+
+        self.worker = worker
+        self.mode = mode
+        self.interval = interval
+        self.__stop = False
+        self.__working_thread = None
+        self.__sync_clock = threading.Lock()
+        self.__initial_call = block_on_first_call
+        self.__returned = False
+
+    def start(self):
+        self.__working_thread = threading.Thread(
+            target=self.__worker_wrapper, args=()
+        )
+
+        self.__working_thread.start()
+
+        # we acquire this lock to wait til the initial call to the function is done, then we return to main thread
+        self.__sync_clock.acquire()
+        self.__sync_clock.release()
+
+    def __worker_wrapper(self):
+        while not self.__stop:
+            if self.__initial_call:
+                self.__sync_clock.acquire()
+
+            self.worker()
+
+            if self.__initial_call:
+                self.__sync_clock.release()
+
+            if self.interval != -1:
+                time.sleep(60 * self.interval)
+            else:
+                if self.mode == "h":
+                    sleep_til_next_hour()
+                elif self.mode == "d":
+                    sleep_til_next_day()
+
+        self.__returned = True
+
+    def stop(self):
+        """
+        Stops the thread.
+        :return: None
+        """
+        self.__stop = True
+
+    def join(self):
+        self.stop()
+
+        while not self.__returned:
+            time.sleep(1)
+
+
+def sleep_til_next_hour(buffer=0):
+    current_time = time.localtime()
+    minutes_until_next_hour = 60 - current_time.tm_min + buffer
+    time.sleep(minutes_until_next_hour * 60)
+
+
+def sleep_til_next_day(buffer=0):
+    current_time = time.localtime()
+    hours_until_midnight = 24 - current_time.tm_hour
+    time.sleep(hours_until_midnight * 60 * 60 + 60 * buffer)

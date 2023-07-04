@@ -19,7 +19,7 @@ work_to_be_done = [{"num1": num_seq1[i], "num2": num_seq2[i]} for i in range(len
 tp = ThreadPool(work_to_be_done, num_threads=5, verbose=True, cache_return_val=True)
 
 # the library automatically create a wrapper for you worker, note that the worker must be working on a single item from "work"
-tp.set_worker(worker_func)
+tp.set_default_worker(worker_func)
 
 tp.start()
 tp.sync()

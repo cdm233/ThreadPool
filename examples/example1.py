@@ -16,7 +16,7 @@ work_to_be_done = range(20)
 tp = ThreadPool(work_to_be_done, num_threads=-1, verbose=True)
 
 # the library automatically create a wrapper for you worker, note that the worker must be working on a single item from "work"
-tp.set_worker(worker_func)
+tp.set_default_worker(worker_func)
 
 tp.start()
 tp.sync()

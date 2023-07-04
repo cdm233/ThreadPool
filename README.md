@@ -4,6 +4,7 @@ Note: Still in the planning phase.
 
 ## Quick Example1
 The standard way of using it.
+
 ```python
 from threadpool import ThreadPool
 import time
@@ -22,7 +23,7 @@ work_to_be_done = range(20)
 tp = ThreadPool(work_to_be_done, num_threads=-1, verbose=True)
 
 # the library automatically create a wrapper for you worker, note that the worker must be working on a single item from "work"
-tp.set_worker(worker_func)
+tp.set_default_worker(worker_func)
 
 tp.start()
 tp.sync()
@@ -64,6 +65,7 @@ Process finished with exit code 0
 
 ## Quick Example 2
 If your worker function takes in more than 1 parameter.
+
 ```python
 from threadpool import ThreadPool
 import time
@@ -86,7 +88,7 @@ work_to_be_done = [{"num1": num_seq1[i], "num2": num_seq2[i]} for i in range(len
 tp = ThreadPool(work_to_be_done, num_threads=5, verbose=True, cache_return_val=True)
 
 # the library automatically create a wrapper for you worker, note that the worker must be working on a single item from "work"
-tp.set_worker(worker_func)
+tp.set_default_worker(worker_func)
 
 tp.start()
 tp.sync()
