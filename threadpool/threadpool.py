@@ -2,6 +2,7 @@ import threading
 import time
 import multiprocessing as mp
 import math
+import queue
 
 
 class ThreadPool:
@@ -283,3 +284,172 @@ class ThreadPool:
         :return: None
         """
         self.__stop_event.set()
+
+
+class DynamicThreadPool:
+    def __init__(self, work, num_threads=-1, verbose=False, cache_return_val=True):
+        assert num_threads != 0, "Num_threads must be -1 or a positive integer!"
+        assert num_threads >= -1, "Num_threads must be -1 or a positive integer!"
+        assert isinstance(num_threads, int), "Num_threads must be -1 or a positive integer!"
+
+        if num_threads == -1:
+            self.num_threads = mp.cpu_count()
+        else:
+            self.num_threads = num_threads
+
+        self.verbose = verbose
+
+        self.work_queue = queue.Queue()
+        self.__total_progress = len(work)
+
+        for w in work:
+            self.work_queue.put(w)
+
+        self.__worker_set = False
+        self.__thread_pool = []
+        self.__stop_event = threading.Event()
+        self.__print_lock = threading.Lock()
+        self.__total_time = 0
+        self.__return_val_cache = {}
+        self.cache_return_val = cache_return_val
+        self.__progress = 0
+
+    @staticmethod
+    def __queue_to_list(q):
+        """
+        Only call this function after all work is done.
+        :param q: queue
+        :return: list of the queue
+        """
+        queue_list = []
+        while not q.empty():
+            item = q.get()
+            queue_list.append(item)
+            q.put(item)
+
+        return queue_list
+
+    @staticmethod
+    def __worker():
+        """
+        Placeholder for the worker function that will be set by the user.
+        """
+        return None
+
+    def __print_progress(self):
+        """
+        Prints the progress of the thread pool.
+        """
+        cur_progress = self.__progress
+
+        avg_time_per_task = self.__total_time / (cur_progress if cur_progress != 0 else 1)
+        est_remaining_time = avg_time_per_task * (self.__total_progress - cur_progress) / self.num_threads
+
+        print(
+            f"\r  DynamicThreadPool Progress Tracker: {cur_progress + 1}/{self.__total_progress}, "
+            f"est: {est_remaining_time:.2f}s.",
+            end="")
+
+    def __worker_wrapper(self, thread_id):
+        """
+        Wrapper for the worker function that iterated through the distributed work.
+        It also handles error catching and progress tracking.
+
+        :param thread_id: ID of the current thread
+        :return: None
+        """
+        while not self.work_queue.empty():
+            start_time = time.time()
+            try:
+                cur_work = self.work_queue.get()
+
+                if isinstance(cur_work, dict):
+                    cur_ret_val = self.__worker(**cur_work)
+                else:
+                    cur_ret_val = self.__worker(cur_work)
+
+                # create the array if it's the first iteration
+                if f"thread {thread_id}" not in self.__return_val_cache:
+                    self.__return_val_cache[f"thread {thread_id}"] = []
+
+                # Store the return value of the worker function, if it exists
+                if (cur_ret_val is not None) and self.cache_return_val:
+                    self.__return_val_cache[f"thread {thread_id}"].append({
+                        "param": cur_work,
+                        "iteration": thread_id,
+                        "return value": cur_ret_val
+                    })
+
+                end_time = time.time()
+                self.__total_time += (end_time - start_time)
+
+                self.__print_progress()
+                self.__progress += 1
+                self.work_queue.task_done()
+            except Exception as e:
+                print(f"An error occurred at thread {thread_id}: {e}")
+                self.work_queue.task_done()
+
+    def set_worker(self, func):
+        """
+        Sets the worker, the worker should work on one item from the distributed work.
+        Please make sure the worker is thread-safe.
+        :param func: Function handle to the worker.
+        :return: True/False, indicating if the worker is set correctly
+        """
+        assert callable(func), "Function provided is not callable!"
+
+        self.__worker = func
+
+        for thread_id in range(self.num_threads):
+            cur_thread = threading.Thread(
+                target=self.__worker_wrapper, args=(thread_id,)
+            )
+            self.__thread_pool.append(cur_thread)
+
+        self.__worker_set = True
+
+    def sync(self):
+        for t in self.__thread_pool:
+            t.join()
+        if self.verbose:
+            print("\nAll threads synchronized.")
+
+    def start(self):
+        assert self.__worker_set, "Worker function is not set!"
+        for t in self.__thread_pool:
+            t.start()
+
+    def clear_thread_pool(self):
+        while not self.work_queue.empty():
+            try:
+                self.work_queue.get(False)
+            except queue.Empty:
+                continue
+            self.work_queue.task_done()
+        self.__thread_pool = []
+        self.__worker_set = False
+
+    def set_verbose(self, option):
+        """
+        Sets the verbose flag outside the initialization process.
+        :param option: True/False
+        :return: None
+        """
+        self.verbose = option
+
+    def stop_all_threads(self):
+        """
+        Ask all threads to politely stop executing.
+        :return: None
+        """
+        self.__stop_event.set()
+
+    def get_ret_val(self):
+        """
+        Retrieves the return values of all threads.
+
+        :return: A list of lists, where each inner list contains the return values of a single thread
+        """
+        assert self.cache_return_val, "cache_return_val is not set to True!"
+        return self.__return_val_cache

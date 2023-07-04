@@ -1,1 +1,1 @@
-from threadpool.threadpool import ThreadPool
+from threadpool.threadpool import ThreadPool, DynamicThreadPool
